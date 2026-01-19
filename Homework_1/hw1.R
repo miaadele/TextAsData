@@ -28,15 +28,17 @@ word_counts <- texts %>%
   count(doc_title, name = "n_tokens")
 word_counts
 
+#num of word tokens in Text A before stopword removal, no lowercasing
 a_token_ct <- word_counts %>%
   filter(doc_title == "Text A") %>%
   pull(n_tokens)
-a_token_ct #num of word tokens in Text A before stopword removal, no lowercasing
+a_token_ct 
 
+#num of word tokens in Text B before stopword removal, no lowercasing
 b_token_ct <- word_counts %>%
   filter(doc_title == "Text B") %>%
   pull(n_tokens)
-b_token_ct #num of word tokens in Text B before stopword removal, no lowercasing
+b_token_ct 
 
 #split text into tokens and count the number of word tokens, with lowercasing
 word_counts_lower <- texts %>%
@@ -47,17 +49,18 @@ word_counts_lower <- texts %>%
   ungroup()
 word_counts_lower
 
+#num of UNIQUE word tokens in Text A before stopword removal, with lowercasing
 a_token_ct_lower <- word_counts_lower %>%
   filter(doc_title == "Text A") %>%
   pull(n_unique_tokens)
-a_token_ct_lower #num of UNIQUE word tokens in Text A before stopword removal, with lowercasing
+a_token_ct_lower 
 
+#num of UNIQUE word tokens in Text B before stopword removal, with lowercasing
 b_token_ct_lower <- word_counts_lower %>%
   filter(doc_title == "Text B") %>%
   pull(n_unique_tokens)
-b_token_ct_lower #num of UNIQUE word tokens in Text B before stopword removal, with lowercasing
+b_token_ct_lower 
 
-#STEP 1
 #create a diagnostics table before stopword removal
 corpus_diagnostics <- tibble(
   doc_title = c("Text A", "Text B"),
@@ -66,3 +69,63 @@ corpus_diagnostics <- tibble(
   n_word_types = c(a_token_ct_lower, b_token_ct_lower) #number of unique word types after lowercasing, before stopword removal
 )
 corpus_diagnostics
+
+#stopword removal
+data("stop_words") #tidytext's built-in stopword list
+#project-specific stopwords
+custom_stopwords <- tibble(
+  word = c(
+    "vnto", "haue", "doo", "hath", "bee", "ye", "thee"
+  )
+)
+all_stopwords <- bind_rows(stop_words, custom_stopwords) %>%
+  distinct(word)
+all_stopwords %>% slice(1:10)
+
+#count which words appear most frequently in each document, 
+#after removing standard and custom stopwords
+word_cts_no_stopwords <- texts %>%
+  unnest_tokens(word, text) %>%
+  mutate(word = str_to_lower(word)) %>%
+  anti_join(all_stopwords, by = "word") %>%
+  count(doc_title, word, sort = TRUE)
+word_cts_no_stopwords
+
+#calculate total number of words (after stopword removal) in each doc
+doc_lengths <-word_cts_no_stopwords %>%
+  group_by(doc_title) %>%
+  summarise(total_words = sum(n))
+doc_lengths
+
+#join word_cts_no_stopwords with doc_lengths
+word_counts_normalized <-
+  word_cts_no_stopwords %>%
+  left_join(doc_lengths)
+word_counts_normalized
+
+#add a new column to word_counts_normalized to
+#show each word's frequency as a proportion of the total words in its doc
+word_counts_normalized <- word_counts_normalized %>%
+  mutate(relative_freq = n/total_words)
+word_counts_normalized
+
+#word frequency visualization using relative frequencies
+#plot the top 20 words
+plot_n_words <- 20
+word_comp_tbl <- word_counts_normalized %>%
+  pivot_wider(
+    names_from = doc_title,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  mutate(max_n = pmax(`Text A`, `Text B`)) %>%
+  arrange(desc(max_n))
+
+top_words <- word_comp_tbl %>%
+  slice_head(n = plot_n_words)
+  pivot_longer(
+    cols = c(`Text A`, `Text B`),
+    names_to = "doc_title",
+    values_to = "n"
+  ) %>%
+  mutate(word = fct_reorder(word, n, .fun = max))
