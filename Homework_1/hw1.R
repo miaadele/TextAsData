@@ -113,6 +113,7 @@ word_counts_normalized
 #plot the top 20 words
 plot_n_words <- 20
 word_comp_tbl <- word_counts_normalized %>%
+  select(doc_title, word, n) %>%
   pivot_wider(
     names_from = doc_title,
     values_from = n,
@@ -128,7 +129,11 @@ word_plot_data <- word_comp_tbl %>%
     names_to = "doc_title",
     values_to = "n"
   ) %>%
-  mutate(word = fct_reorder(word, n, .fun = max))
+  left_join(doc_lengths, by = "doc_title") %>%
+  mutate(
+    relative_freq = n / total_words,
+    word = fct_reorder(word, n, .fun = max)
+    )
 
 ggplot(word_plot_data, aes(x = relative_freq, y = word)) + 
   geom_col() +
