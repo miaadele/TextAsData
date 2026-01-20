@@ -23,19 +23,19 @@ texts <- tibble(
 texts
 
 #split text into tokens and count the number of word tokens, no lowercasing
-word_counts <- texts %>%
+word_counts_case <- texts %>%
   unnest_tokens(word, text, to_lower = FALSE) %>%
   count(doc_title, name = "n_tokens")
-word_counts
+word_counts_case
 
 #num of word tokens in Text A before stopword removal, no lowercasing
-a_token_ct <- word_counts %>%
+a_token_ct <- word_counts_case %>%
   filter(doc_title == "Text A") %>%
   pull(n_tokens)
 a_token_ct 
 
 #num of word tokens in Text B before stopword removal, no lowercasing
-b_token_ct <- word_counts %>%
+b_token_ct <- word_counts_case %>%
   filter(doc_title == "Text B") %>%
   pull(n_tokens)
 b_token_ct 
@@ -121,11 +121,25 @@ word_comp_tbl <- word_counts_normalized %>%
   mutate(max_n = pmax(`Text A`, `Text B`)) %>%
   arrange(desc(max_n))
 
-top_words <- word_comp_tbl %>%
-  slice_head(n = plot_n_words)
+word_plot_data <- word_comp_tbl %>%
+  slice_head(n = plot_n_words) %>%
   pivot_longer(
     cols = c(`Text A`, `Text B`),
     names_to = "doc_title",
     values_to = "n"
   ) %>%
   mutate(word = fct_reorder(word, n, .fun = max))
+
+ggplot(word_plot_data, aes(x = n, y = word)) + 
+  geom_col() +
+  facet_wrap(~ doc_title, scales = "free_x") +
+  labs(
+    title = "Most relatively frequent words (stopwords removed)",
+    subtitle = paste0(
+      "Top ", plot_n_words,
+      " words by relative frequency across both texts"
+    ),
+    x = "Relative frequency of word",
+    y = NULL
+  ) +
+  theme_minimal()
