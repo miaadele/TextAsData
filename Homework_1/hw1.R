@@ -130,7 +130,7 @@ word_plot_data <- word_comp_tbl %>%
   ) %>%
   mutate(word = fct_reorder(word, n, .fun = max))
 
-ggplot(word_plot_data, aes(x = n, y = word)) + 
+ggplot(word_plot_data, aes(x = relative_freq, y = word)) + 
   geom_col() +
   facet_wrap(~ doc_title, scales = "free_x") +
   labs(
