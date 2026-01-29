@@ -11,6 +11,8 @@ library(ggplot2)
 library(forcats)
 library(tibble)
 library(scales)
+library(quanteda)
+library(quanteda.textstats)
 
 file_a <- "texts/A07594__Circle_of_Commerce.txt"
 file_b <- "texts/B14801__Free_Trade.txt"
@@ -31,7 +33,8 @@ data("stop_words")
 #add project-specific stopwords
 custom_stopwords <- tibble(
   word = c(
-    "vnto", "haue", "doo", "hath", "bee", "ye", "thee"
+    "vnto","haue","doo","hath","bee","ye","thee","hee","shall","hast","doe",
+    "beene","thereof","thus"
   )
 )
 
@@ -44,6 +47,16 @@ word_counts <- texts %>%
   mutate(word = str_to_lower(word)) %>%
   anti_join(all_stopwords, by = "word") %>%
   count(doc_title, word, sort = TRUE)
+#word_counts is a tidy table with the columns: doc_title, word, and n
+#words in word_counts are lowercased 
+#stopwords have been removed
+word_counts
+
+#calculate total number of tokens in each doc (after lowercasing and stopword removal)
+doc_lenghts <- word_counts %>%
+  group_by(doc_title) %>%
+  summarise(total_words = sum(n))
+doc_lenghts
 
 #STEP 2: Join tokens to the Bing sentiment dictionary
 bing <- word_counts %>%
@@ -61,7 +74,33 @@ raw_sentiment <- bing %>%
 raw_sentiment
 
 #STEP 4: Compute TF-IDF for words in each doc
-tf_idf <- word_counts %>%
-  #count how many times each word appears in each doc
-  pivot_wider(names_from = doc_title, values_from = n, values_fill = 0)
-tf_idf
+tfidf <- word_counts %>%
+  left_join(doc_lenghts) %>%
+  bind_tf_idf(word, doc_title, n)
+tfidf
+
+#STEP 5: Keep only sentiment-bearing words
+tf_idf_bing <- tfidf %>%
+  inner_join(get_sentiments("bing"))
+tf_idf_bing
+
+#STEP 6: Compute TF-IDF-weighted sentiment totals
+tfidf_weighted_summary <- tf_idf_bing %>%
+  group_by(doc_title) %>%
+  summarise(
+    tfidf_positive = sum(tf_idf[sentiment == "positive"], na.rm = TRUE),
+    tfidf_negative = sum(tf_idf[sentiment == "negative"], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    net_sentiment_tfidf = tfidf_positive - tfidf_negative
+  )
+tfidf_weighted_summary
+
+#STEP 7: Compare Raw vs. TF-IDF Sentiment
+comp_tbl <- raw_sentiment %>%
+  left_join(tfidf_weighted_summary)
+comp_tbl 
+
+#export table as CSV
+write.csv(comp_tbl, file = 'HW2_final_table_Lassiter.csv')
