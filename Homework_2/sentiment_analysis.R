@@ -82,8 +82,11 @@ tfidf
 #STEP 5: Keep only sentiment-bearing words
 tf_idf_bing <- tfidf %>%
   inner_join(get_sentiments("bing")) %>%
-  arrange(desc(tf_idf))
+  arrange(desc(tf_idf)) #sort by highest tf-idf sentiment
 tf_idf_bing
+
+top_impact_words <- slice_head(tf_idf_bing, n = 5)
+top_impact_words
 
 #STEP 6: Compute TF-IDF-weighted sentiment totals
 tfidf_weighted_summary <- tf_idf_bing %>%
