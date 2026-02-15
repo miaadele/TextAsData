@@ -83,3 +83,56 @@ windows %>%
 
 #collapse all the context window rows into a single rankled list
 #this measures how many time a give word appears within ±5 window_size tokens of the anchor across the whole document
+cooc <- windows %>%
+  count(word, sort = TRUE, name = "cooc_n")
+cooc
+
+#Compute overall word frequencies, P(w) and P(a), in the document
+total_tokens = nrow(tokens)
+
+word_freq <- tokens %>%
+  count(word, name = "word_n") %>%
+  mutate(p_word = word_n/total_tokens)
+word_freq
+
+#calculate anchor frequency and probability
+anchor_stats <- word_freq %>%
+  filter(word == anchor) %>%
+  transmute(anchor_n = word_n,
+            p_anchor = p_word)
+anchor_stats
+
+total_window_tokens <-nrow (windows) 
+#count how many times w appears inside anchor windows
+p_w_given_windows <- windows %>%
+  count(word, name = "cooc_n") %>%
+  mutate(p_word_in_windows = cooc_n/total_window_tokens)
+p_w_given_windows 
+
+#join baseline frequencies and compute PMI
+pmi_tbl <- p_w_given_windows %>%
+  left_join(word_freq, by = "word") %>%
+  mutate(
+    pmi = log2(p_word_in_windows / 
+                 (p_word * anchor_stats$p_anchor))
+  ) %>%
+  arrange(desc(pmi))
+pmi_tbl
+
+#filter by minimum co-occurrence count
+pmi_tbl_filtered <- pmi_tbl %>%
+  filter(cooc_n >= 3) %>%
+  arrange(desc(pmi))
+pmi_tbl_filtered
+
+#visually compare raw co-occurrence
+cooc %>%
+  slice_max(cooc_n, n = 15) %>%
+  mutate(word = reorder(word, cooc_n)) %>%
+  ggplot(aes(x = cooc_n, y = word)) +
+  geom_col() +
+  labs(
+    title = str_glue("Top co-occurring words within +- {window_size} of '{anchor}'"),
+    x = "Co-occurrence count",
+    y = NULL
+  )
