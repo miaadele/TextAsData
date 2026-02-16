@@ -135,4 +135,16 @@ cooc %>%
     title = str_glue("Top co-occurring words within +- {window_size} of '{anchor}'"),
     x = "Co-occurrence count",
     y = NULL
+  ) 
+
+#top PMI (filtered by co-occurrence threshold)
+pmi_tbl_filtered %>%
+  slice_max(pmi, n = 15) %>%
+  mutate(word = reorder(word, pmi)) %>%
+  ggplot(aes(x = pmi, y = word)) +
+  geom_col() +
+  labs(
+    title = str_glue("Top PMI-associated words near '{anchor}' (cooc_n greater than or equal to 3)"),
+    x = "PMI (log2 scale)",
+    y = NULL
   )
