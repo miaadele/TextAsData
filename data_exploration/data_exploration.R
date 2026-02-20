@@ -151,6 +151,20 @@ distinct_terms
 
 write.csv(distinct_terms, file = 'tfidf_distinct_terms_per_doc.csv')
 
+tables_list <- distinct_terms %>%
+  group_by(doc_title) %>%
+  group_split()
+
+names(tables_list) <- distinct_terms %>% 
+  distinct(doc_title) %>% 
+  pull(doc_title)
+tables_list
+
+for(name in names(tables_list)) {
+  file_name <- paste0(name, ".csv")  # e.g., "Text A.csv"
+  write.csv(tables_list[[name]], file = file_name, row.names = FALSE)
+}
+
 #--------------------------------------------------
 #Approach 2: Pearson correlation, similarity and distance between texts
 
