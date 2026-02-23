@@ -1,0 +1,189 @@
+library(dplyr)
+library(tidyr)
+library(tidytext)
+library(tibble)
+library(readr)
+library(tidyverse)
+library(readr)
+library(purrr) 
+library(quanteda)
+library(quanteda.textstats)
+library(stringr)
+
+#retrieve files
+all_files <- list.files("texts/", full.names = TRUE)
+all_files 
+
+#create cleaned title vector
+doc_titles <- all_files |>
+  basename() |> #remove folder path
+  str_remove("\\.txt$")
+#doc_titles
+
+#read each file into a tibble
+texts_tbl <- map_dfr(
+  seq_along(all_files),
+  ~ tibble(
+    doc_title = paste("text", .x),
+    text = read_file(all_files[.x])
+  )
+)
+texts_tbl
+
+
+library(udpipe)
+
+#Load an English UD (= Univesal Dependencies) model 
+model_info <- udpipe_download_model(language = "english-ewt")
+ud_model <- udpipe_load_model(model_info$file_model)
+
+#annotate texts using UDPipe
+anno_df <- texts_tbl %>%
+  mutate(
+    #parse each text with UD parser and set doc_id to doc name
+    anno = map2(
+      text,
+      doc_title,
+      ~ udpipe_annotate(ud_model, x = .x, doc_id = .y) %>%
+        as.data.frame()
+    )
+  ) %>%
+  #keep only parse annotations, then unnest into rows
+  select(anno) %>%
+  unnest(anno) %>%
+  #use the UD doc_id as the doc label and drop any duplicates
+  rename(document = doc_id) %>%
+  #select columns for syntactic analysis
+  select(
+    document,
+    paragraph_id,
+    sentence_id,
+    token_id,
+    token,
+    lemma,
+    upos,
+    feats,
+    head_token_id,
+    dep_rel
+  )
+anno_df %>%
+  glimpse()
+
+#identify syntactic features
+syntax_df <- anno_df %>%
+  mutate(
+    is_word = upos != "PUNCT", #<--is it a word (and not punctuation?)
+    
+    
+    # Is this an independent clause? finite verbs are proxy for indipendent clauses
+    is_clause = (upos %in% c("VERB", "AUX")) &
+      str_detect(coalesce(feats, ""), "VerbForm=Fin"),
+    
+    # Dependent clause? 
+    is_dep_clause = dep_rel %in% c(
+      "advcl", #adverbial clause 
+      "ccomp", # clausal complement
+      "xcomp", #open clausal complement
+      "acl", #adnomial clause
+      "acl:relcl" #relative clause
+    ),
+    
+    # Is this coordination? That is, does it use "and" "or" etc.?
+    is_coord = dep_rel %in% c("conj", "cc"),
+    
+    # Nominal complexity: these relations make noun phrases more complex
+    is_complex_nominal = dep_rel %in% c(
+      "amod", # adjective modifier ("big cup")
+      "nmod", #nominal modifier ("cup of tea")
+      "compound", # compound ("lemon tea")
+      "appos" #apposition ("tea, my favorite!")
+    )
+    
+  )
+
+#count syntactic features for each individual sentence
+sentence_df <- syntax_df %>%
+  filter(is_word) %>%           #count words (not punctuation)
+  group_by(document, sentence_id) %>%   #group by document and sentence
+  summarise(
+    words          = n(),   #number of words per sentence
+    clauses        = sum(is_clause), # number of clauses per sentence
+    dep_clauses    = sum(is_dep_clause), #number of dependent clauses per sentence
+    .groups = "drop"
+  )
+
+sentence_df
+
+#Mean length of sentence (MLS)
+mls_df <- sentence_df %>%
+  group_by(document) %>%
+  summarise(
+    MLS = mean(words), # Average words per sentence
+    .groups = "drop"
+  )
+mls_df 
+
+#Clauses per sentence (C/S)
+clausal_density_df <- sentence_df %>%
+  group_by(document) %>%
+  summarise(
+    sentences = n(),
+    clauses   = sum(clauses),
+    C_per_S   = clauses / sentences,
+    .groups = "drop"
+  )
+clausal_density_df
+
+#Dependent clauses per sentence 
+subordination_df <- sentence_df %>%
+  group_by(document) %>%
+  summarise(
+    clauses = sum(clauses),
+    dep_clauses = sum(dep_clauses),
+    sentences = n(),
+    DC_per_C = dep_clauses / pmax(clauses, 1), #avoid division by 0 
+    DC_per_S = dep_clauses / sentences,
+    .groups = "drop"
+  )
+subordination_df
+
+#Coordination per sentence
+coordination_df <- syntax_df %>%
+  group_by(document) %>%
+  summarise(
+    coord_relations = sum(is_coord),
+    clauses         = sum(is_clause),
+    sentences       = n_distinct(sentence_id),
+    Coord_per_C     = coord_relations / pmax(clauses, 1),
+    Coord_per_S     = coord_relations / sentences,
+    .groups = "drop"
+  )
+coordination_df
+
+#Complex nominals per sentence
+nominal_df <- syntax_df %>%
+  group_by(document) %>%
+  summarise(
+    complex_nominals = sum(is_complex_nominal),
+    clauses          = sum(is_clause),
+    sentences        = n_distinct(sentence_id),
+    CN_per_C         = complex_nominals / pmax(clauses, 1),
+    CN_per_S         = complex_nominals / sentences,
+    .groups = "drop"
+  )
+nominal_df
+
+#Create summary table
+all_measures <- mls_df %>%  # ← Added mls_df %>%
+  left_join(clausal_density_df %>% select(document, C_per_S), by = "document") %>%
+  left_join(subordination_df %>% select(document, DC_per_C, DC_per_S), by = "document") %>%
+  left_join(coordination_df %>% select(document, Coord_per_C, Coord_per_S), by = "document") %>%
+  left_join(nominal_df %>% select(document, CN_per_C, CN_per_S), by = "document")
+
+all_measures %>%
+  knitr::kable(
+    digits = 2,
+    col.names = c("Document", "MLS", "C/S", "DC/C", "DC/S", 
+                  "Coord/C", "Coord/S", "CN/C", "CN/S")
+  )
+write.csv(all_measures, file = "all_syntactic_complexity.csv")

@@ -119,6 +119,29 @@ top15_combined <- do.call(rbind, lapply(names(top15_idf), function(doc) {
 }))
 top15_combined
 
+shared_words <- top15_combined %>%
+  group_by(word) %>%
+  filter(n_distinct(doc_title) > 4) %>%
+  ungroup()
+shared_words
+
+ggplot(shared_words,
+       aes(x = doc_title, y = word, fill = tfidf)) +
+  geom_tile() +
+  labs(
+    title = "TF-IDF of Terms that Occur in 5 or More Documents",
+    x = "Document",
+    y = NULL
+  ) +
+  theme_minimal()
+
+shared_words <- shared_words %>%
+  pivot_wider(
+    names_from = doc_title,
+    values_from = tfidf
+  )
+shared_words
+
 #visualize the top 15 characteristic terms for each document
 for (doc in unique(top15_combined$doc_title)) {
   doc_data <- top15_combined %>%
@@ -193,6 +216,7 @@ sim_mat <- round(sim_mat, 3)
 heat_df <- as.data.frame(sim_mat) %>%
   rownames_to_column("doc_i") %>%
   pivot_longer(-doc_i, names_to = "doc_j", values_to = "r")
+heat_df
 
 #sort from highest to lowest correlation
 sort_correlation <- heat_df %>%
@@ -200,6 +224,38 @@ sort_correlation <- heat_df %>%
   filter(doc_i < doc_j) %>% #remove duplicate pairs
   arrange(desc(r))
 sort_correlation
+
+#top ten most correlated document pairs
+most_correlated <- sort_correlation %>% 
+  slice(1:10) %>%
+  pivot_wider(
+    names_from = doc_j,
+    values_from = r
+  )
+most_correlated
+
+
+
+ggplot(heat_df, aes(x = doc_j, y = doc_i, fill = r)) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0
+  ) +
+  labs(
+    title = "Pearson Correlation Between Documents",
+    x = NULL,
+    y = NULL,
+    fill = "Correlation"
+    ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank()
+  )
 
 #Highest Correlation: 1
 slice_max(sort_correlation, r, n = 1)
